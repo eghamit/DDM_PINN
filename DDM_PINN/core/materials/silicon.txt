@@ -1,0 +1,27 @@
+# Silicon (Si) - room-temperature properties
+#
+# Format: "key = value" ; text after '#' is a comment.
+# Concentrations are given in cm^-3 and mobilities in cm^2/V/s; the loader
+# converts them to SI (m^-3, m^2/V/s).  Energies are in eV, permittivity is
+# dimensionless, temperature is in kelvin.
+
+name              = silicon
+temperature       = 300.0       # K
+epsilon_r         = 11.7        # relative permittivity
+electron_affinity = 4.05        # eV
+band_gap          = 1.12        # eV
+ni                = 1.0e10      # intrinsic carrier concentration [cm^-3]
+Nc                = 2.8e19      # effective DOS, conduction band   [cm^-3]
+Nv                = 1.04e19     # effective DOS, valence band      [cm^-3]
+mobility_n        = 1350.0      # electron mobility [cm^2/V/s]
+mobility_p        = 480.0       # hole mobility     [cm^2/V/s]
+
+# effective masses (units of m0) - reserved for the quantum-correction phase
+m_eff_n           = 0.26
+m_eff_p           = 0.49
+
+# generation-recombination parameters (used when recombination is enabled)
+tau_n             = 1.0e-6      # SRH electron lifetime [s]
+tau_p             = 1.0e-6      # SRH hole lifetime     [s]
+C_n               = 2.8e-31     # Auger electron coefficient [cm^6/s]
+C_p               = 1.2e-31     # Auger hole coefficient     [cm^6/s]

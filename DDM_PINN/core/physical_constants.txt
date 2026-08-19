@@ -1,0 +1,15 @@
+# Fundamental physical constants (CODATA 2018), SI units.
+#
+# Format: "symbol = value  # name [unit]"  (text after '#' is a comment).
+# These are universal constants; every value is already in SI.  Access them as
+# attributes, e.g. PhysicalConstants.q, PhysicalConstants.kB.
+
+q     = 1.602176634e-19      # elementary charge                [C]
+kB    = 1.380649e-23         # Boltzmann constant               [J/K]
+eps0  = 8.8541878128e-12     # vacuum electric permittivity     [F/m]
+m0    = 9.1093837015e-31     # electron rest mass               [kg]
+h     = 6.62607015e-34       # Planck constant                  [J s]
+hbar  = 1.054571817e-34      # reduced Planck constant          [J s]
+c     = 2.99792458e8         # speed of light in vacuum         [m/s]
+kB_eV = 8.617333262e-5       # Boltzmann constant               [eV/K]
+eV    = 1.602176634e-19      # electronvolt (energy)            [J]

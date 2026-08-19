@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "DDM_PINN"
+version = "0.1.0"
+description = "Physics-Informed Neural Network drift-diffusion semiconductor device solver (PINN counterpart of the DDM.SPC FEM solver)"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = [
+    "numpy>=1.21",
+    "scipy>=1.7",
+    "torch>=2.0",
+]
+
+[project.optional-dependencies]
+plot = ["matplotlib>=3.4"]
+dev = ["pytest>=7.0", "matplotlib>=3.4"]
+
+[tool.setuptools.packages.find]
+include = ["DDM_PINN*"]
+
+[tool.setuptools.package-data]
+"DDM_PINN.core" = ["*.txt", "materials/*.txt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: integration tests that train a network (deselect with -m 'not slow')",
+]
