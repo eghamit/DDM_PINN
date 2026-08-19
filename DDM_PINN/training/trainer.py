@@ -25,7 +25,7 @@ class Trainer:
     def __init__(self, physics, sampler, doping, contacts, dtype=torch.float64,
                  num_collocation=4000, adam_steps=800, adam_lr=1e-3,
                  lbfgs_steps=800, resample_every=0, grad_clip=None,
-                 verbose=False, log_every=400):
+                 formulation="quasi-fermi", verbose=False, log_every=400):
         self.physics = physics
         self.sampler = sampler
         self.doping = doping
@@ -37,6 +37,7 @@ class Trainer:
         self.lbfgs_steps = lbfgs_steps
         self.resample_every = resample_every
         self.grad_clip = grad_clip
+        self.formulation = formulation
         self.verbose = verbose
         self.log_every = log_every
 
@@ -53,7 +54,9 @@ class Trainer:
         for x in Xb.reshape(-1).tolist():
             contact = pos_to_contact[round(x, 9)]
             V = scaled_voltages.get(contact.name, 0.0)
-            rows.append(contact.targets(V))
+            targets = (contact.targets_direct(V) if self.formulation == "direct"
+                       else contact.targets(V))
+            rows.append(targets)
         targets = torch.tensor(np.array(rows), dtype=self.dtype)
         return Xb.to(self.dtype), targets
 

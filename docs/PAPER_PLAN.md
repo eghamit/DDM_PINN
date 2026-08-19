@@ -166,3 +166,74 @@ matched-oracle validation or the inverse problem).
 1. Implement the flux-based current functional + adaptive loss weighting (M1).
 2. Validate ideality factor vs FEM on the Si diode.
 3. Only then build the ablation harness and the parametric surrogate.
+
+---
+
+## 12. Literature landscape (searched Aug 2026) — and a strategic pivot
+
+A literature search changed the recommendation. **Both original headline
+contributions are substantially occupied by 2024–2025 work.** The honest reading:
+
+### What is already done (must cite; some must benchmark)
+
+- **DDNet** (Riganti, Alasio, Bellotti, Dal Negro, arXiv:2509.08073, Sep 2025) —
+  a *unified physics-informed DD solver, forward and inverse, mesh-free*, using
+  three subnetworks (φ-Net, n-Net, p-Net) learning ψ, n, p directly, validated
+  against traditional simulators. **This is the closest prior work and occupies
+  the "forward+inverse mesh-free DD-PINN" and much of the "inverse" ground.**
+  Must cite *and* benchmark against.
+- **Out-of-training-range TCAD PINN / PI-DeepONet** (arXiv:2408.07921, 2024) —
+  bias *generalization / extrapolation* of device fields (Si nanowire, MAPE
+  ~0.1–0.2%). **Occupies the "parametric / bias-generalization surrogate"
+  ground.** Must cite.
+- **PI-DeepONet for drift-diffusion** (ICML 2025, arXiv:2505.04263) — operator
+  learning + parameter identification for DD (on metric graphs). Parametric +
+  inverse via operator learning.
+- **IEEE 2023** "A PINN Algorithm for Simulating Semiconductor Devices"
+  (IEEE Xplore 10249274) — early DD-PINN forward solver.
+- Classical quantum-corrected DD (background, not ML): Schrödinger–Poisson-DD
+  (SPDD), density-gradient, Bohm-potential (QDD) — established FEM methods.
+
+### What appears open (the differentiated niche)
+
+- **A self-consistent Schrödinger–Poisson-*Drift-Diffusion* PINN** — i.e.,
+  quantum-**confinement-corrected transport** solved mesh-free as a physics
+  residual — was **not found** in the search. The nearest neighbour is
+  **Singh 2025** (*Real-Time Electrostatics of Double-Gate FETs with Neural
+  Networks*, Wiley Adv. Theory Simul.), but that is a **data-driven DNN
+  surrogate** for quantum-corrected **electrostatics only** (Poisson +
+  Schrödinger, no DD transport). Our differentiators would be: (i) full
+  quantum-corrected **transport** (terminal current), not just electrostatics;
+  (ii) a **physics-residual PINN** (mesh-free, self-consistent), not a
+  data-trained surrogate; (iii) autodiff self-consistency, potentially without
+  the FEM solver's outer Gummel loop.
+
+  *Caveat:* the arxiv/adsabs/semanticscholar hosts were egress-blocked, so this
+  "open" conclusion rests on secondary sources and must be confirmed with a full
+  scholar search before the novelty claim is finalised.
+
+### Revised positioning
+
+- **New headline contribution:** a self-consistent **Schrödinger–Poisson
+  quantum-corrected drift-diffusion PINN**, validated per-node against `DDM.SPC`
+  (which implements exactly this via its Gummel loop) — the one direction that is
+  (a) apparently open, (b) uniquely enabled by the parent FEM solver's SP
+  capability, and (c) hard for the crowded plain-DD-PINN work to have pre-empted.
+- **Demoted to supporting contributions:** the quasi-Fermi De Mari **conditioning
+  recipe + ablation** (a genuine methodological contrast to DDNet's
+  direct-density three-subnetwork formulation — learning O(1) quasi-Fermi
+  potentials instead of 12-decade densities), and **parametric amortisation**
+  over the parameters that matter for confinement (gate bias, body thickness).
+- **Unchanged:** the matched-FEM-oracle per-node validation (still a rigor
+  advantage), and the **M1 I–V gate** (quantum-corrected transport still needs
+  the forward-bias transport solved first, so M1 remains the prerequisite).
+
+### Consequences for the plan
+
+- The quasi-Fermi-vs-direct-density conditioning study becomes a concrete,
+  defensible experiment *because* DDNet exists to contrast against.
+- A DDNet reimplementation (or careful qualitative comparison) is now a rigor
+  requirement, not optional.
+- Sivang/Singh electrostatics surrogate must be positioned against explicitly.
+- Phase order shifts: after M1 (I–V), prioritise the **quantum-corrected**
+  extension over the pure parametric surrogate.
