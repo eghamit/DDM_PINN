@@ -7,5 +7,5 @@ dist/
 *.pt
 *.png
 *.npz
-iv_run.log
+*.log
 .DS_Store

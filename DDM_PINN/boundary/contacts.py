@@ -38,6 +38,18 @@ class OhmicContact:
         u = V + self.equilibrium_potential()
         return u, V, V
 
+    def targets_direct(self, scaled_voltage):
+        """Return the ``(u, ln n, ln p)`` Dirichlet targets at applied ``V``.
+
+        The ohmic contact pins the carrier densities to their charge-neutral
+        equilibrium values, which are independent of the applied bias:
+        ``ln n = asinh(C/2)``, ``ln p = -asinh(C/2)`` (so ``n p = 1`` and
+        ``n - p = C``).  Only the potential carries the applied voltage.
+        """
+        V = float(scaled_voltage)
+        u_eq = self.equilibrium_potential()
+        return V + u_eq, u_eq, -u_eq
+
 
 def build_ohmic_contacts(device, doping, scaling):
     """Build the ohmic contacts for every terminal of ``device``.

@@ -31,7 +31,7 @@ from DDM_PINN.core.scaling import Scaling
 from DDM_PINN.device.doping import DopingProfile
 from DDM_PINN.nn.constraints import HardBC1D
 from DDM_PINN.nn.network import PINNField
-from DDM_PINN.physics.residuals import DriftDiffusion1D
+from DDM_PINN.physics.residuals import DriftDiffusion1D, DriftDiffusionDirect1D
 from DDM_PINN.postprocess.current import current_density
 from DDM_PINN.postprocess.fields import evaluate
 from DDM_PINN.training.losses import LossWeights
@@ -43,7 +43,7 @@ class PINNSolver:
     def __init__(self, device, material, doping, contacts=None,
                  recombination=None, area=1.0, smooth_junction=None,
                  network=None, weights=None, trainer=None, dtype=torch.float64,
-                 seed=0, verbose=False):
+                 formulation="quasi-fermi", seed=0, verbose=False):
         """
         Parameters
         ----------
@@ -69,6 +69,11 @@ class PINNSolver:
             (default ``None`` = recombination-free ideal-diffusion model).
         """
         torch.set_default_dtype(dtype)
+        if formulation not in ("quasi-fermi", "direct"):
+            raise ValueError(
+                f"formulation must be 'quasi-fermi' or 'direct', got "
+                f"{formulation!r}.")
+        self.formulation = formulation
         self.device = device
         self.material = material
         self.scaling = Scaling(material)
@@ -93,20 +98,24 @@ class PINNSolver:
             1.0, max(abs(c) for c in self.doping.region_C.values()))
         mun = self.scaling.scale_mobility(material.mobility_n)
         mup = self.scaling.scale_mobility(material.mobility_p)
-        self.physics = DriftDiffusion1D(mun, mup, recombination=recombination,
-                                        poisson_scale=poisson_scale,
-                                        continuity_scale=poisson_scale)
+        physics_cls = (DriftDiffusion1D if formulation == "quasi-fermi"
+                       else DriftDiffusionDirect1D)
+        self.physics = physics_cls(mun, mup, recombination=recombination,
+                                   poisson_scale=poisson_scale,
+                                   continuity_scale=poisson_scale)
 
         # neural field wrapped in the hard ohmic-BC transform, so the terminal
-        # (u, v, w) values (hence the built-in potential) are exact by
-        # construction and the boundary loss term is redundant.
+        # values (hence the built-in potential) are exact by construction and
+        # the boundary loss term is redundant.  Quasi-fermi ramps only the
+        # potential baseline; the direct (u, ln n, ln p) form ramps all three,
+        # since the log densities also step across the junction.
         base_net = network or PINNField(in_dim=1, out_dim=3, seed=seed)
-        # junction positions (scaled) and the depletion width set the smooth
-        # potential-baseline ramp
         junctions = [self.scaling.scale_length(r.x1)
                      for r in device.regions[:-1]]
         w_dep = self._depletion_width(doping)
-        self.net = HardBC1D(base_net, Ls, junctions, 0.4 * w_dep)
+        ramp = (0,) if formulation == "quasi-fermi" else (0, 1, 2)
+        self.net = HardBC1D(base_net, Ls, junctions, 0.4 * w_dep,
+                            ramp_components=ramp)
         self.net.to(dtype)
         # ordered (left, right) terminals by scaled position
         ordered = sorted(self.contacts.values(), key=lambda c: c.position)
@@ -118,7 +127,7 @@ class PINNSolver:
         self.sampler = Sampler(device, self.scaling, dtype=dtype, seed=seed)
         self.trainer = trainer or Trainer(
             self.physics, self.sampler, self.doping, self.contacts,
-            dtype=dtype, verbose=verbose)
+            dtype=dtype, formulation=formulation, verbose=verbose)
 
         self.applied_voltages = {name: 0.0 for name in self.contacts}
         self.state_ready = False
@@ -147,8 +156,13 @@ class PINNSolver:
 
     def _apply_bc(self, scaled_voltages):
         """Set the hard-BC terminal targets for the current applied bias."""
-        left = self._left.targets(scaled_voltages.get(self._left.name, 0.0))
-        right = self._right.targets(scaled_voltages.get(self._right.name, 0.0))
+        vL = scaled_voltages.get(self._left.name, 0.0)
+        vR = scaled_voltages.get(self._right.name, 0.0)
+        if self.formulation == "direct":
+            left, right = (self._left.targets_direct(vL),
+                           self._right.targets_direct(vR))
+        else:
+            left, right = self._left.targets(vL), self._right.targets(vR)
         self.net.set_targets(left, right)
 
     # -- equilibrium -------------------------------------------------------
@@ -218,7 +232,8 @@ class PINNSolver:
 
     def solution(self, num=401):
         """Physical fields (potential, quasi-Fermi potentials, n, p) on a grid."""
-        return evaluate(self.net, self.scaling, self.device.length, num=num)
+        return evaluate(self.net, self.scaling, self.device.length, num=num,
+                        formulation=self.formulation)
 
     def _log(self, msg):
         if self.verbose:

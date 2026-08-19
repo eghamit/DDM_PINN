@@ -34,15 +34,21 @@ import torch.nn as nn
 
 
 class HardBC1D(nn.Module):
-    def __init__(self, net, length_scaled, junctions, transition_width):
+    def __init__(self, net, length_scaled, junctions, transition_width,
+                 ramp_components=(0,)):
         super().__init__()
         self.net = net
         self.Ls = float(length_scaled)
         self.junctions = [float(j) for j in junctions]
         self.width = float(transition_width)
+        # which output components use the smooth junction ramp baseline (vs a
+        # plain linear interpolation).  Quasi-Fermi: only the potential (0).
+        # Direct (u, ln n, ln p): all three, since ln n / ln p also step across
+        # the junction with the full Boltzmann swing.
+        self.ramp_components = tuple(ramp_components)
         self.register_buffer("aL", torch.zeros(3))
         self.register_buffer("aR", torch.zeros(3))
-        # normalisation constants so the u-ramp hits the terminals exactly
+        # normalisation constants so the ramp hits the terminals exactly
         self._s0 = float(self._shape_np(0.0))
         self._sL = float(self._shape_np(self.Ls))
 
@@ -65,19 +71,18 @@ class HardBC1D(nn.Module):
         self.aL = torch.as_tensor(left, dtype=self.aL.dtype, device=device)
         self.aR = torch.as_tensor(right, dtype=self.aR.dtype, device=device)
 
-    def _u_baseline(self, x):
-        """Smooth junction ramp between the two terminal u-targets (exact ends)."""
-        s = (self._shape(x) - self._s0) / (self._sL - self._s0)
-        return self.aL[0] + (self.aR[0] - self.aL[0]) * s
-
     def forward(self, x):
         t = x / self.Ls                         # (M, 1) in [0, 1]
         # feed the network the NORMALISED coordinate (De Mari scaling makes the
         # raw scaled coordinate tiny); autograd threads d/dx through t.
         raw = self.net(t)                       # (M, 3)
-        # linear baselines for v, w; smooth junction ramp for u
-        vw_base = self.aL + (self.aR - self.aL) * t
-        u_base = self._u_baseline(x)
-        baseline = torch.cat([u_base, vw_base[:, 1:2], vw_base[:, 2:3]], dim=1)
+        # normalised junction-ramp shape (exact 0 at X=0, 1 at X=L)
+        s = (self._shape(x) - self._s0) / (self._sL - self._s0)   # (M, 1)
+        # per-component interpolation variable: ramp for ramp_components, else t
+        cols = []
+        for i in range(3):
+            shape_i = s if i in self.ramp_components else t
+            cols.append(self.aL[i] + (self.aR[i] - self.aL[i]) * shape_i)
+        baseline = torch.cat(cols, dim=1)
         bubble = t * (1.0 - t)
         return baseline + bubble * raw

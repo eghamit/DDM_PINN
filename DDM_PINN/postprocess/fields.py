@@ -27,16 +27,33 @@ class Solution1D:
         return float(self.potential.max() - self.potential.min())
 
 
-def evaluate(net, scaling, length, num=401, dtype=torch.float64):
-    """Sample the trained solution on ``num`` points over ``[0, length]`` [m]."""
+def evaluate(net, scaling, length, num=401, dtype=torch.float64,
+             formulation="quasi-fermi"):
+    """Sample the trained solution on ``num`` points over ``[0, length]`` [m].
+
+    Handles both output parametrisations: quasi-Fermi ``(u, v, w)`` with
+    ``n = n_i e^{u-v}``, ``p = n_i e^{w-u}``; and direct ``(u, ln n, ln p)`` with
+    ``n = n_i e^{s_n}``, ``p = n_i e^{s_p}``.  The returned quasi-Fermi
+    potentials are reconstructed for the direct case (``v = u - s_n``,
+    ``w = s_p + u``) so the ``Solution1D`` fields are consistent across
+    formulations.
+    """
     x = np.linspace(0.0, length, num)
     X = torch.tensor((x / scaling.length).reshape(-1, 1), dtype=dtype)
     with torch.no_grad():
-        uvw = net(X)
-    u = uvw[:, 0].cpu().numpy()
-    v = uvw[:, 1].cpu().numpy()
-    w = uvw[:, 2].cpu().numpy()
-    n = scaling.density * np.exp(np.clip(u - v, None, 80.0))
-    p = scaling.density * np.exp(np.clip(w - u, None, 80.0))
+        out = net(X)
+    a = out[:, 0].cpu().numpy()
+    b = out[:, 1].cpu().numpy()
+    c = out[:, 2].cpu().numpy()
     VT = scaling.potential
+    u = a
+    if formulation == "direct":
+        s_n, s_p = b, c
+        v = u - s_n
+        w = s_p + u
+    else:
+        v, w = b, c
+        s_n, s_p = u - v, w - u
+    n = scaling.density * np.exp(np.clip(s_n, None, 80.0))
+    p = scaling.density * np.exp(np.clip(s_p, None, 80.0))
     return Solution1D(x, VT * u, VT * v, VT * w, n, p)
