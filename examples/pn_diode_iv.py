@@ -37,6 +37,10 @@ def main(plot=False, NA=1e22, ND=1e22, vmax=0.5, npts=6):
     solver.trainer.adam_steps = 400
     solver.trainer.lbfgs_steps = 700
     solver.trainer.num_collocation = 4000
+    # M1: gradient-norm balancing so the current-carrying continuity terms are
+    # not starved in the bulk under forward bias (key to a clean exponential I-V)
+    solver.trainer.adaptive_weights = True
+    solver.trainer.reweight_every = 150
 
     V = np.linspace(0.0, vmax, npts)
     print(f"=== PINN PN-diode forward-bias I-V (0 -> {vmax} V) ===")
@@ -45,6 +49,15 @@ def main(plot=False, NA=1e22, ND=1e22, vmax=0.5, npts=6):
     print("\n  V [V]      I [A]")
     for v, i in zip(Vout, I):
         print(f"  {v:5.3f}   {i:+.4e}")
+
+    # ideality factor from the mid-bias slope of ln I vs V (ideal diode -> ~1)
+    VT = mat.thermal_voltage
+    mask = (Vout >= 0.15) & (Vout <= 0.45) & (I > 0)
+    if mask.sum() >= 2:
+        slope = np.polyfit(Vout[mask], np.log(I[mask]), 1)[0]
+        print(f"\n  ideality factor ~ {(1.0 / VT) / slope:.3f}  (ideal = 1.0)")
+    mono = bool(np.all(np.diff(I) >= -1e-15))
+    print(f"  monotonic I(V): {mono}")
 
     if plot:
         _plot(Vout, I)
