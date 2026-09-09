@@ -113,7 +113,14 @@ class PINNSolver:
         junctions = [self.scaling.scale_length(r.x1)
                      for r in device.regions[:-1]]
         w_dep = self._depletion_width(doping)
-        ramp = (0,) if formulation == "quasi-fermi" else (0, 1, 2)
+        self._junctions_scaled = junctions      # for the depletion-edge current
+        self._w_dep = w_dep
+        # ramp ALL three baselines across the junction (not just the potential):
+        # a linear v/w baseline imposes a constant quasi-Fermi gradient in the
+        # neutral bulk where the carrier density is ~1e6, injecting a large
+        # spurious ohmic leakage current that flattens the I-V (inflated
+        # ideality).  A flat-in-bulk junction ramp removes that imposed gradient.
+        ramp = (0, 1, 2)
         self.net = HardBC1D(base_net, Ls, junctions, 0.4 * w_dep,
                             ramp_components=ramp)
         self.net.to(dtype)
@@ -219,15 +226,24 @@ class PINNSolver:
 
     # -- observables -------------------------------------------------------
     def terminal_current(self):
-        """Total terminal current [A] = current density [A/m^2] * area."""
+        """Total terminal current [A] = current density [A/m^2] * area.
+
+        Read from the depletion-edge window (junction +/- a few depletion
+        widths), where the carrier densities are O(1) and the total current is
+        not swamped by the huge-density flux amplification of the neutral bulk.
+        """
         J, _ = current_density(self.physics, self.net, self.scaling,
-                               self.device.length)
+                               self.device.length,
+                               junctions=self._junctions_scaled,
+                               edge_width=self._w_dep)
         return J * self.area
 
     def current_uniformity(self):
-        """Spread of J(x) across the device [A/m^2] (convergence diagnostic)."""
+        """Spread of J(x) across the depletion window [A/m^2] (diagnostic)."""
         _, spread = current_density(self.physics, self.net, self.scaling,
-                                    self.device.length)
+                                    self.device.length,
+                                    junctions=self._junctions_scaled,
+                                    edge_width=self._w_dep)
         return spread
 
     def solution(self, num=401):
