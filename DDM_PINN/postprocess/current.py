@@ -24,6 +24,9 @@ def current_density(physics, net, scaling, length, num=200, dtype=torch.float64)
     _, _, j_tot = physics.current_flux(net, X)
     j = j_tot.detach().cpu().numpy().reshape(-1)
     J0 = scaling.current
-    J_mean = float(np.mean(j)) * J0
+    # total current is spatially constant at steady state; the median is a
+    # robust estimate (insensitive to the larger residual near the contacts),
+    # and the spread of j(x) doubles as a solution-quality diagnostic.
+    J = float(np.median(j)) * J0
     J_spread = float(np.std(j)) * J0
-    return J_mean, J_spread
+    return J, J_spread

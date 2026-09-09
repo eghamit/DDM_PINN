@@ -18,14 +18,15 @@ not a cold start.
 import numpy as np
 import torch
 
-from DDM_PINN.training.losses import total_loss
+from DDM_PINN.training.losses import pde_losses, total_loss
 
 
 class Trainer:
     def __init__(self, physics, sampler, doping, contacts, dtype=torch.float64,
                  num_collocation=4000, adam_steps=800, adam_lr=1e-3,
                  lbfgs_steps=800, resample_every=0, grad_clip=None,
-                 formulation="quasi-fermi", verbose=False, log_every=400):
+                 formulation="quasi-fermi", adaptive_weights=False,
+                 reweight_every=200, verbose=False, log_every=400):
         self.physics = physics
         self.sampler = sampler
         self.doping = doping
@@ -38,6 +39,8 @@ class Trainer:
         self.resample_every = resample_every
         self.grad_clip = grad_clip
         self.formulation = formulation
+        self.adaptive_weights = adaptive_weights
+        self.reweight_every = reweight_every
         self.verbose = verbose
         self.log_every = log_every
 
@@ -60,6 +63,34 @@ class Trainer:
         targets = torch.tensor(np.array(rows), dtype=self.dtype)
         return Xb.to(self.dtype), targets
 
+    # -- adaptive loss weighting ------------------------------------------
+    def _grad_norm(self, loss, net):
+        grads = torch.autograd.grad(loss, list(net.parameters()),
+                                    retain_graph=True, allow_unused=True)
+        sq = sum(float(g.pow(2).sum()) for g in grads if g is not None)
+        return sq ** 0.5
+
+    def _rebalance(self, net, X, C, Xb, targets, weights, relax=0.5):
+        """Gradient-norm balancing of the PDE loss terms (Wang et al.).
+
+        Rescales the Poisson / electron / hole weights so each term contributes
+        a comparable gradient magnitude to the network.  This matters under
+        forward bias, where the current-carrying continuity terms are tiny in
+        the bulk and get starved by a fixed-weight loss - which is what stops the
+        I-V from coming out cleanly exponential.
+        """
+        lu, lv, lw = pde_losses(self.physics, net, X, C)
+        gn = {"poisson": self._grad_norm(lu, net),
+              "electron": self._grad_norm(lv, net),
+              "hole": self._grad_norm(lw, net)}
+        ref = sum(gn.values()) / 3.0
+        for name in ("poisson", "electron", "hole"):
+            g = gn[name]
+            if g > 0:
+                new = ref / g
+                old = getattr(weights, name)
+                setattr(weights, name, (1.0 - relax) * old + relax * new)
+
     # -- main solve --------------------------------------------------------
     def solve_point(self, net, scaled_voltages, weights):
         """Refine ``net`` to the given scaled terminal voltages; return history."""
@@ -78,6 +109,9 @@ class Trainer:
             if self.resample_every and step % self.resample_every == 0:
                 X = self.sampler.interior(self.num_collocation)
                 C = self._C_at(X)
+            if (self.adaptive_weights and self.reweight_every
+                    and step % self.reweight_every == 0):
+                self._rebalance(net, X, C, Xb, targets, weights)
             opt.zero_grad()
             loss, parts = total_loss(self.physics, net, X, C, Xb, targets,
                                      weights)
